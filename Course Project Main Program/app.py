@@ -5,6 +5,7 @@ from tkinter import messagebox
 import sqlite3
 from datetime import datetime
 
+import requests
 
 class ToolTip:
     def __init__(self, widget):
@@ -101,11 +102,15 @@ class App(tk.Tk):
         self.geometry("900x520")
         self.minsize(750, 450)
 
+        # store login info
+        self.access_token = None
+        self.username = None
+
         container = ttk.Frame(self, padding=12)
         container.pack(fill="both", expand=True)
 
         self.frames = {}
-        for Page in (HomePage, ToolsPage):
+        for Page in (LoginPage, CreateAccountPage, HomePage, ToolsPage):
             frame = Page(parent=container, controller=self)
             self.frames[Page.__name__] = frame
             frame.grid(row=0, column=0, sticky="nsew")
@@ -113,7 +118,7 @@ class App(tk.Tk):
         container.rowconfigure(0, weight=1)
         container.columnconfigure(0, weight=1)
 
-        self.show_frame("HomePage")
+        self.show_frame("LoginPage")
 
     def show_frame(self, name: str):
         frame = self.frames[name]
@@ -121,6 +126,119 @@ class App(tk.Tk):
         # Let pages refresh themselves on entry if they want
         if hasattr(frame, "on_show"):
             frame.on_show()
+
+
+class LoginPage(ttk.Frame):
+    def __init__(self, parent, controller: App):
+        super().__init__(parent)
+        self.controller = controller
+
+        ttk.Label(self, text="Login", font=("Segoe UI", 18, "bold")).pack(pady=10)
+
+        form = ttk.Frame(self)
+        form.pack(pady=10)
+
+        ttk.Label(form, text="Username").grid(row=0, column=0, sticky="w")
+        self.username_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.username_var, width=25).grid(row=0, column=1)
+
+        ttk.Label(form, text="Password").grid(row=1, column=0, sticky="w")
+        self.password_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.password_var, show="*", width=25).grid(row=1, column=1)
+
+        ttk.Button(self, text="Login", command=self.login).pack(pady=10)
+
+        ttk.Button(
+            self,
+            text="Create Account",
+            command=lambda: controller.show_frame("CreateAccountPage"),
+        ).pack()
+
+        self.status_var = tk.StringVar()
+        ttk.Label(self, textvariable=self.status_var).pack(pady=5)
+
+    def login(self):
+        username = self.username_var.get().strip()
+        password = self.password_var.get().strip()
+
+        if not username or not password:
+            self.status_var.set("Enter username and password.")
+            return
+
+        try:
+            resp = requests.post(
+                "http://127.0.0.1:6900/login",
+                json={"username": username, "password": password},
+                timeout=5
+            )
+
+            data = resp.json()
+
+            if resp.status_code == 200 and data.get("ok"):
+                self.controller.access_token = data["access_token"]
+                self.controller.username = username
+                self.controller.show_frame("HomePage")
+            else:
+                self.status_var.set("Login failed.")
+
+        except Exception:
+            self.status_var.set("Account service not reachable.")
+
+
+class CreateAccountPage(ttk.Frame):
+    def __init__(self, parent, controller: App):
+        super().__init__(parent)
+        self.controller = controller
+
+        ttk.Label(self, text="Create Account", font=("Segoe UI", 18, "bold")).pack(pady=10)
+
+        form = ttk.Frame(self)
+        form.pack(pady=10)
+
+        ttk.Label(form, text="Username").grid(row=0, column=0, sticky="w")
+        self.username_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.username_var, width=25).grid(row=0, column=1)
+
+        ttk.Label(form, text="Password").grid(row=1, column=0, sticky="w")
+        self.password_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.password_var, show="*", width=25).grid(row=1, column=1)
+
+        ttk.Button(self, text="Create Account", command=self.create_account).pack(pady=10)
+
+        ttk.Button(
+            self,
+            text="Back to Login",
+            command=lambda: controller.show_frame("LoginPage"),
+        ).pack()
+
+        self.status_var = tk.StringVar()
+        ttk.Label(self, textvariable=self.status_var).pack(pady=5)
+
+    def create_account(self):
+        username = self.username_var.get().strip()
+        password = self.password_var.get().strip()
+
+        if not username or not password:
+            self.status_var.set("Enter username and password.")
+            return
+
+        try:
+            resp = requests.post(
+                "http://127.0.0.1:6900/accounts",
+                json={"username": username, "password": password},
+                timeout=5
+            )
+
+            data = resp.json()
+
+            if resp.status_code == 201 and data.get("ok"):
+                messagebox.showinfo("Success", "Account created. Please login.")
+                self.controller.show_frame("LoginPage")
+            else:
+                self.status_var.set("Account creation failed.")
+
+        except Exception:
+            self.status_var.set("Account service not reachable.")
 
 
 class HomePage(ttk.Frame):
